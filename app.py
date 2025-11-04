@@ -1,67 +1,67 @@
 import streamlit as st
-import replicate
-import time
-import os
+import torch
+from diffusers import StableDiffusionPipeline # StableDiffusionPipeline 사용
 
-# 페이지 설정
-st.set_page_config(page_title="AI 이미지 생성기", layout="wide")
-st.title("🎨 Streamlit AI 이미지 생성기")
+# --- 모델 로드 (캐싱 필수: 앱이 리로드 되어도 모델을 다시 불러오지 않도록 함) ---
+@st.cache_resource
+def load_model():
+    # 사용하려는 Stable Diffusion 모델 ID 지정 (Hugging Face ID)
+    model_id = "runwayml/stable-diffusion-v1-5" 
+    
+    # GPU 사용 가능 여부 확인
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    
+    with st.spinner(f"모델을 {device}에 로드 중입니다... (최초 실행 시 시간 소요)"):
+        # 파이프라인 로드
+        if device == "cuda":
+            # GPU 사용 시 메모리 절약을 위해 float16 사용
+            pipeline = StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16)
+            pipeline.to(device)
+        else:
+            pipeline = StableDiffusionPipeline.from_pretrained(model_id)
+            pipeline.to(device)
+            
+    return pipeline
 
-# --- 1. API 키 설정 및 로드 ---
-try:
-    # Streamlit Cloud에 배포 시 secrets.toml에서 키를 가져옴
-    REPLICATE_API_TOKEN = st.secrets["replicate"]["api_token"]
-    os.environ["REPLICATE_API_TOKEN"] = REPLICATE_API_TOKEN
-except:
-    st.error("🔴 Replicate API 키를 설정해주세요. (secrets.toml 또는 환경 변수)")
-    REPLICATE_API_TOKEN = None
+st.title("✨ 로컬 $\text{Stable Diffusion}$ 이미지 생성기")
 
-# --- 2. UI 구성 ---
+# 모델 로드
+pipeline = load_model()
+
+# --- UI 입력 ---
 prompt = st.text_area(
-    "✨ 생성하고 싶은 이미지에 대한 설명을 입력하세요:", 
-    "A beautiful watercolor painting of a futuristic city at sunset, highly detailed."
+    "생성하고 싶은 이미지 설명을 입력하세요:", 
+    "A photorealistic image of a cat wearing a spacesuit, digital art."
+)
+negative_prompt = st.text_input(
+    "제외하고 싶은 요소 (Negative Prompt):", 
+    "low quality, worst quality, bad anatomy, deformed"
 )
 
+# 사이드바 설정
 with st.sidebar:
-    st.header("설정")
-    width = st.selectbox("이미지 가로 크기", [512, 768, 1024], index=2)
-    height = st.selectbox("이미지 세로 크기", [512, 768, 1024], index=2)
-    num_outputs = st.slider("생성할 이미지 수", 1, 4, 1)
-    
-    st.markdown("---")
-    st.markdown("본 앱은 **Replicate API**를 사용합니다.")
+    st.header("생성 설정")
+    num_inference_steps = st.slider("Step 수", 10, 100, 50)
+    guidance_scale = st.slider("Guidance Scale (CFG)", 1.0, 20.0, 7.5)
+    seed = st.number_input("Seed 값 (랜덤성을 위해 비워두세요)", value=None, format="%d")
 
+# 시드 설정 (재현성을 위해 필요)
+generator = torch.Generator(pipeline.device).manual_seed(seed) if seed is not None else None
 
-# --- 3. 이미지 생성 로직 ---
-if st.button("이미지 생성", use_container_width=True) and REPLICATE_API_TOKEN:
-    
+if st.button("이미지 생성", use_container_width=True):
     if not prompt:
-        st.warning("설명을 입력해주세요!")
+        st.warning("설명을 입력해야 합니다.")
     else:
-        with st.spinner('이미지를 생성 중입니다... 잠시만 기다려주세요.'):
-            try:
-                # Replicate API 호출 (모델: stability-ai/sdxl 예시)
-                output = replicate.run(
-                    "stability-ai/sdxl:39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b",
-                    input={
-                        "prompt": prompt,
-                        "width": width,
-                        "height": height,
-                        "num_outputs": num_outputs,
-                        "negative_prompt": "low quality, worst quality, bad anatomy, deformed"
-                    }
-                )
-                
-                # 결과 표시
-                st.success("이미지 생성 완료!")
-                
-                if output:
-                    cols = st.columns(num_outputs)
-                    for i, image_url in enumerate(output):
-                        with cols[i]:
-                            st.image(image_url, caption=f"결과 {i+1}", use_column_width="always")
-                else:
-                    st.error("이미지 생성 결과가 없습니다.")
-                    
-            except Exception as e:
-                st.error(f"이미지 생성 중 오류 발생: {e}")
+        with st.spinner("이미지를 생성 중입니다..."):
+            # 이미지 생성 호출
+            image = pipeline(
+                prompt=prompt,
+                negative_prompt=negative_prompt,
+                num_inference_steps=num_inference_steps,
+                guidance_scale=guidance_scale,
+                generator=generator
+            ).images[0]
+            
+            # 결과 표시
+            st.image(image, caption="생성된 이미지", use_column_width=True)
+            st.success("이미지 생성 완료!")
