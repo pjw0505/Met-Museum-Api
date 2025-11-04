@@ -8,17 +8,6 @@ import os
 st.set_page_config(page_title="AI 이미지 생성기", layout="wide")
 st.title("🎨 Streamlit AI 이미지 생성기")
 
-# Streamlit Community Cloud에 배포하는 경우
-# Replicate API 키는 .streamlit/secrets.toml 파일에 저장해야 합니다.
-# [replicate]
-# api_token = "YOUR_REPLICATE_API_TOKEN"
-try:
-    REPLICATE_API_TOKEN = st.secrets["replicate"]["api_token"]
-    os.environ["REPLICATE_API_TOKEN"] = REPLICATE_API_TOKEN
-except:
-    st.error("Replicate API 키를 설정해주세요. (secrets.toml 또는 환경 변수)")
-    REPLICATE_API_TOKEN = None
-
 # UI 구성
 prompt = st.text_area("✨ 생성하고 싶은 이미지에 대한 설명을 입력하세요:", "A beautiful watercolor painting of a futuristic city at sunset, highly detailed.")
 
