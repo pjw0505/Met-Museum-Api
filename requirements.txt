@@ -1,2 +1,6 @@
 streamlit
-replicate
+torch
+diffusers
+transformers
+accelerate # GPU 최적화용 (권장)
+pillow
